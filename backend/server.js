@@ -53,7 +53,7 @@ app.get("/counter/:id", async (req, res) => {
       </g>
       <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">
         <text aria-hidden="true" x="335" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="550">VIEWS</text>
-        <text x="335" y="140" transform="scale(.1)" fill="#fff" textLength="550">VIEWS</text>
+        <text x="335" y="140" transform="scale(.1)" fill="#fff" textLength="550">VISITED</text>
         <text aria-hidden="true" x="875" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="350">${countStr}</text>
         <text x="875" y="140" transform="scale(.1)" fill="#fff" textLength="350">${countStr}</text>
       </g>
