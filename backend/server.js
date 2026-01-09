@@ -26,15 +26,32 @@ app.get("/counter/:id", async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).send("Missing id");
 
-  await Counter.updateOne(
+  // Update counter dan ambil nilai terbaru
+  const result = await Counter.findOneAndUpdate(
     { _id: id },
     { $inc: { count: 1 }, $set: { updatedAt: new Date() } },
-    { upsert: true }
+    { upsert: true, new: true }
   );
 
-  const img = Buffer.from("R0lGODlhAQABAAAAACwAAAAAAQABAAA=", "base64");
-  res.set("Content-Type", "image/gif");
-  res.send(img);
+  // Kirim response sebagai SVG dengan angka counter
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="30">
+      <rect width="100" height="30" fill="#007acc" rx="5"/>
+      <text x="50" y="20" font-family="Arial" font-size="14" fill="white" text-anchor="middle">
+        Views: ${result.count}
+      </text>
+    </svg>
+  `;
+
+  res.set("Content-Type", "image/svg+xml");
+  res.send(svg);
+});
+
+// Endpoint untuk melihat data counter (untuk debugging)
+app.get("/api/counter/:id", async (req, res) => {
+  const { id } = req.params;
+  const counter = await Counter.findById(id);
+  res.json(counter || { _id: id, count: 0, message: "Counter not found" });
 });
 
 app.listen(8080, () => console.log("Server running on 8080"));
