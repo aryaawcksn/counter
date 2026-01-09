@@ -34,24 +34,34 @@ app.get("/counter/:id", async (req, res) => {
   );
 
   // Kirim response sebagai SVG dengan angka counter
+  const timestamp = Date.now();
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="30">
-      <rect width="100" height="30" fill="#007acc" rx="5"/>
-      <text x="50" y="20" font-family="Arial" font-size="14" fill="white" text-anchor="middle">
+    <svg xmlns="http://www.w3.org/2000/svg" width="120" height="30">
+      <rect width="120" height="30" fill="#007acc" rx="5"/>
+      <text x="60" y="20" font-family="Arial" font-size="14" fill="white" text-anchor="middle">
         Views: ${result.count}
       </text>
-      <!-- Timestamp untuk mencegah cache: ${Date.now()} -->
+      <!-- Cache buster: ${timestamp} -->
     </svg>
   `;
 
   // Header untuk mencegah caching
   res.set({
     "Content-Type": "image/svg+xml",
-    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
     "Pragma": "no-cache",
-    "Expires": "0"
+    "Expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+    "Last-Modified": new Date().toUTCString(),
+    "ETag": `"${timestamp}-${result.count}"`
   });
   res.send(svg);
+});
+
+// Endpoint khusus untuk forum dengan redirect untuk bypass cache
+app.get("/forum-counter/:id", async (req, res) => {
+  const timestamp = Date.now();
+  const redirectUrl = `/counter/${req.params.id}?t=${timestamp}`;
+  res.redirect(302, redirectUrl);
 });
 
 // Endpoint untuk melihat data counter (untuk debugging)
