@@ -22,36 +22,49 @@ const Counter = mongoose.model(
 );
 
 /* ===== COUNTER API ===== */
+/* ===== COUNTER API (Updated Design) ===== */
 app.get("/counter/:id", async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).send("Missing id");
 
-  // Update counter dan ambil nilai terbaru
   const result = await Counter.findOneAndUpdate(
     { _id: id },
     { $inc: { count: 1 }, $set: { updatedAt: new Date() } },
     { upsert: true, new: true }
   );
 
-  // Kirim response sebagai SVG dengan angka counter
   const timestamp = Date.now();
+  const countStr = result.count.toLocaleString(); // Format angka (misal: 1,000)
+  
+  // Desain Badge Modern
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="120" height="30">
-      <rect width="120" height="30" fill="#007acc" rx="5"/>
-      <text x="60" y="20" font-family="Arial" font-size="14" fill="white" text-anchor="middle">
-        Views: ${result.count}
-      </text>
-      <!-- Cache buster: ${timestamp} -->
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="110" height="20" role="img" aria-label="Views: ${countStr}">
+      <linearGradient id="s" x2="0" y2="100%">
+        <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+        <stop offset="1" stop-opacity=".1"/>
+      </linearGradient>
+      <clipPath id="r">
+        <rect width="110" height="20" rx="3" fill="#fff"/>
+      </clipPath>
+      <g clip-path="url(#r)">
+        <rect width="65" height="20" fill="#555"/>
+        <rect x="65" width="45" height="20" fill="#007acc"/>
+        <rect width="110" height="20" fill="url(#s)"/>
+      </g>
+      <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">
+        <text aria-hidden="true" x="335" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="550">VIEWS</text>
+        <text x="335" y="140" transform="scale(.1)" fill="#fff" textLength="550">VIEWS</text>
+        <text aria-hidden="true" x="875" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="350">${countStr}</text>
+        <text x="875" y="140" transform="scale(.1)" fill="#fff" textLength="350">${countStr}</text>
+      </g>
     </svg>
   `;
 
-  // Header untuk mencegah caching
   res.set({
     "Content-Type": "image/svg+xml",
     "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
     "Pragma": "no-cache",
-    "Expires": "Thu, 01 Jan 1970 00:00:00 GMT",
-    "Last-Modified": new Date().toUTCString(),
+    "Expires": "0",
     "ETag": `"${timestamp}-${result.count}"`
   });
   res.send(svg);
