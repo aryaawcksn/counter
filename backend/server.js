@@ -40,10 +40,17 @@ app.get("/counter/:id", async (req, res) => {
       <text x="50" y="20" font-family="Arial" font-size="14" fill="white" text-anchor="middle">
         Views: ${result.count}
       </text>
+      <!-- Timestamp untuk mencegah cache: ${Date.now()} -->
     </svg>
   `;
 
-  res.set("Content-Type", "image/svg+xml");
+  // Header untuk mencegah caching
+  res.set({
+    "Content-Type": "image/svg+xml",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0"
+  });
   res.send(svg);
 });
 
