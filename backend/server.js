@@ -22,8 +22,8 @@ const Counter = mongoose.model(
 );
 
 /* ===== COUNTER API ===== */
-app.get("/counter", async (req, res) => {
-  const { id } = req.query;
+app.get("/counter/:id", async (req, res) => {
+  const { id } = req.params;
   if (!id) return res.status(400).send("Missing id");
 
   await Counter.updateOne(
