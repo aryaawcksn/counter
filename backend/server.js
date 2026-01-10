@@ -41,9 +41,8 @@ app.get("/counter/:id", async (req, res) => {
 
   // Dapatkan IP address pengunjung
   const clientIP = req.headers['x-forwarded-for'] || 
-                   req.connection.remoteAddress || 
                    req.socket.remoteAddress ||
-                   (req.connection.socket ? req.connection.socket.remoteAddress : null);
+                   req.ip;
   
   // Lookup lokasi berdasarkan IP
   const geo = geoip.lookup(clientIP);
@@ -85,34 +84,38 @@ app.get("/counter/:id", async (req, res) => {
     { upsert: true, new: true }
   );
 
-  // Update statistik negara
-  await CountryStats.findOneAndUpdate(
-    { _id: id },
-    { 
-      $inc: { "countries.$[elem].count": 1 },
-      $set: { updatedAt: new Date() }
-    },
-    { 
-      arrayFilters: [{ "elem.code": countryCode }],
-      upsert: false
-    }
-  );
-
-  // Jika negara belum ada, tambahkan
-  await CountryStats.findOneAndUpdate(
-    { _id: id, "countries.code": { $ne: countryCode } },
-    { 
-      $push: { 
-        countries: { 
-          code: countryCode, 
-          name: countryName, 
-          count: 1 
-        } 
+  // Update statistik negara dengan logika yang lebih aman
+  try {
+    // Coba update negara yang sudah ada
+    const updateResult = await CountryStats.findOneAndUpdate(
+      { _id: id, "countries.code": countryCode },
+      { 
+        $inc: { "countries.$.count": 1 },
+        $set: { updatedAt: new Date() }
       },
-      $set: { updatedAt: new Date() }
-    },
-    { upsert: true }
-  );
+      { new: true }
+    );
+
+    // Jika negara belum ada, tambahkan negara baru
+    if (!updateResult) {
+      await CountryStats.findOneAndUpdate(
+        { _id: id },
+        { 
+          $push: { 
+            countries: { 
+              code: countryCode, 
+              name: countryName, 
+              count: 1 
+            } 
+          },
+          $set: { updatedAt: new Date() }
+        },
+        { upsert: true, new: true }
+      );
+    }
+  } catch (error) {
+    console.error('Error updating country stats:', error);
+  }
 
   const timestamp = Date.now();
   const countStr = result.count.toLocaleString(); // Format angka (misal: 1,000)
@@ -185,7 +188,6 @@ app.get("/country-stats/:id", async (req, res) => {
   
   // Generate teks untuk negara
   let countryTexts = '';
-  let countryRects = '';
   
   top5Countries.forEach((country, index) => {
     const y = baseHeight + (index * countryHeight) + 12;
