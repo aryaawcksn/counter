@@ -5,6 +5,19 @@ const geoip = require("geoip-lite");
 
 const app = express();
 
+// Middleware untuk trust proxy (penting untuk Railway)
+app.set('trust proxy', true);
+
+// Middleware anti-cache untuk semua endpoint
+app.use((req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
+  next();
+});
+
 // Fungsi untuk mendapatkan emoji bendera
 const getCountryFlag = (countryCode) => {
   const flagEmojis = {
@@ -79,10 +92,31 @@ const getCountryName = (countryCode) => {
 
 // Fungsi helper untuk mendapatkan IP client yang lebih akurat
 const getClientIP = (req) => {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
-         req.headers['x-real-ip'] ||
-         req.socket.remoteAddress ||
-         req.ip;
+  // Dengan trust proxy, req.ip seharusnya sudah akurat
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const realIP = req.headers['x-real-ip'];
+  const cfConnectingIP = req.headers['cf-connecting-ip']; // Cloudflare
+  const socketIP = req.socket.remoteAddress;
+  const reqIP = req.ip;
+  
+  // Prioritas: CF-Connecting-IP > X-Real-IP > X-Forwarded-For (first) > req.ip > socket
+  let clientIP = cfConnectingIP || 
+                 realIP || 
+                 (forwardedFor ? forwardedFor.split(',')[0].trim() : null) ||
+                 reqIP ||
+                 socketIP;
+  
+  // Log semua IP untuk debugging
+  console.log('IP Detection:', {
+    'cf-connecting-ip': cfConnectingIP,
+    'x-real-ip': realIP,
+    'x-forwarded-for': forwardedFor,
+    'req.ip': reqIP,
+    'socket.remoteAddress': socketIP,
+    'selected': clientIP
+  });
+  
+  return clientIP;
 };
 
 /* ===== CONNECT DB ===== */
@@ -357,6 +391,7 @@ app.get("/country-stats/:id", async (req, res) => {
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="300" height="${totalHeight}" role="img">
+      <!-- Cache buster: ${timestamp}-${Math.random().toString(36).substr(2, 9)} -->
       <rect width="300" height="${totalHeight}" fill="#f6f8fa" stroke="#d1d5da" stroke-width="1" rx="6"/>
       
       <!-- Header -->
@@ -396,22 +431,21 @@ app.get("/api/counter/:id", async (req, res) => {
 
 // Endpoint debug untuk melihat IP dan geo detection
 app.get("/debug/ip", async (req, res) => {
-  const clientIP = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
-                   req.headers['x-real-ip'] ||
-                   req.socket.remoteAddress ||
-                   req.ip;
-  
+  const clientIP = getClientIP(req);
   const geo = geoip.lookup(clientIP);
   
   res.json({
     detectedIP: clientIP,
     headers: {
       'x-forwarded-for': req.headers['x-forwarded-for'],
-      'x-real-ip': req.headers['x-real-ip']
+      'x-real-ip': req.headers['x-real-ip'],
+      'cf-connecting-ip': req.headers['cf-connecting-ip']
     },
     socketIP: req.socket.remoteAddress,
     reqIP: req.ip,
-    geoResult: geo
+    geoResult: geo,
+    timestamp: new Date().toISOString(),
+    userAgent: req.headers['user-agent']
   });
 });
 
