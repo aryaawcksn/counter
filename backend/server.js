@@ -26,12 +26,28 @@ app.get("/counter/:id", async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).send("Missing id");
 
-  // 1. Ambil IP Pengunjung
-  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.connection.remoteAddress;
+  // 1. Ambil IP Pengunjung dengan prioritas yang lebih baik
+  const ip = req.headers["x-forwarded-for"]?.split(',')[0]?.trim() || 
+            req.headers["x-real-ip"] || 
+            req.socket.remoteAddress || 
+            req.connection.remoteAddress;
   
   // 2. Lookup Negara berdasarkan IP
   const geo = geoip.lookup(ip);
-  const countryCode = geo ? geo.country : "Unknown";
+  let countryCode = "Unknown";
+  
+  if (geo && geo.country) {
+    countryCode = geo.country;
+  } else {
+    // Fallback: coba deteksi dari header lain
+    const cfCountry = req.headers["cf-ipcountry"];
+    if (cfCountry && cfCountry !== "XX") {
+      countryCode = cfCountry;
+    }
+  }
+
+  // Debug log (akan muncul di server console)
+  console.log(`Counter ${id}: IP=${ip}, Country=${countryCode}, Geo=`, geo);
 
   // 3. Update Database (Increment total views & Increment hit per negara)
   const updateQuery = {
@@ -99,16 +115,64 @@ app.get("/api/counter/:id", async (req, res) => {
   res.json(counter || { _id: id, count: 0, message: "Counter not found" });
 });
 
+// Endpoint debug untuk melihat deteksi IP dan geolocation
+app.get("/debug/geo", (req, res) => {
+  const ip = req.headers["x-forwarded-for"]?.split(',')[0]?.trim() || 
+            req.headers["x-real-ip"] || 
+            req.socket.remoteAddress || 
+            req.connection.remoteAddress;
+  
+  const geo = geoip.lookup(ip);
+  const cfCountry = req.headers["cf-ipcountry"];
+  
+  res.json({
+    detectedIP: ip,
+    allHeaders: {
+      'x-forwarded-for': req.headers["x-forwarded-for"],
+      'x-real-ip': req.headers["x-real-ip"],
+      'cf-ipcountry': cfCountry,
+      'user-agent': req.headers["user-agent"]
+    },
+    socketIP: req.socket.remoteAddress,
+    connectionIP: req.connection?.remoteAddress,
+    geoipResult: geo,
+    finalCountry: geo?.country || cfCountry || "Unknown",
+    timestamp: new Date().toISOString()
+  });
+});
+
 /* ===== FITUR 5 NEGARA DINAMIS BERDASARKAN GEO DATA ===== */
 
 // Fungsi untuk mendapatkan IP address yang sebenarnya
 function getClientIP(req) {
-  return req.headers['x-forwarded-for'] || 
-         req.headers['x-real-ip'] || 
-         req.connection.remoteAddress || 
-         req.socket.remoteAddress ||
-         (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
+  // Prioritas: x-forwarded-for (ambil yang pertama), x-real-ip, socket
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  
+  return req.headers['x-real-ip'] || 
+         req.socket.remoteAddress || 
+         req.connection?.remoteAddress ||
          '8.8.8.8';
+}
+
+// Fungsi untuk mendapatkan negara dengan fallback
+function getCountryFromIP(req) {
+  const ip = getClientIP(req);
+  const geo = geoip.lookup(ip);
+  
+  if (geo && geo.country) {
+    return { country: geo.country, source: 'geoip', geo: geo };
+  }
+  
+  // Fallback ke Cloudflare header jika ada
+  const cfCountry = req.headers["cf-ipcountry"];
+  if (cfCountry && cfCountry !== "XX") {
+    return { country: cfCountry, source: 'cloudflare', geo: null };
+  }
+  
+  return { country: "Unknown", source: 'fallback', geo: null };
 }
 
 // Database negara dengan info lengkap (tanpa emoji untuk menghindari error)
@@ -137,11 +201,12 @@ const countryDatabase = {
 app.get("/countries", async (req, res) => {
   try {
     const clientIP = getClientIP(req);
+    const countryInfo = getCountryFromIP(req);
+    const userCountry = countryInfo.country;
+    const userCity = countryInfo.geo?.city || "Unknown";
     
-    // Dapatkan info geolocation dari IP
-    const geo = geoip.lookup(clientIP);
-    const userCountry = geo ? geo.country : "Unknown";
-    const userCity = geo ? geo.city : "Unknown";
+    // Debug log
+    console.log(`/countries: IP=${clientIP}, Country=${userCountry}, Source=${countryInfo.source}`);
     
     // Ambil semua data counter untuk mendapatkan statistik negara
     const allCounters = await Counter.find({});
@@ -291,10 +356,8 @@ app.get("/countries", async (req, res) => {
 app.get("/api/countries", async (req, res) => {
   try {
     const clientIP = getClientIP(req);
-    
-    // Dapatkan info geolocation dari IP
-    const geo = geoip.lookup(clientIP);
-    const userCountry = geo ? geo.country : "Unknown";
+    const countryInfo = getCountryFromIP(req);
+    const userCountry = countryInfo.country;
     
     // Ambil semua data counter untuk mendapatkan statistik negara
     const allCounters = await Counter.find({});
@@ -327,12 +390,13 @@ app.get("/api/countries", async (req, res) => {
       message: "Statistik negara berdasarkan visitor",
       userLocation: {
         ip: clientIP,
-        country: geo?.country || 'Unknown',
-        countryCode: geo?.country || 'Unknown',
-        city: geo?.city || 'Unknown',
-        region: geo?.region || 'Unknown',
-        timezone: geo?.timezone || 'Unknown',
-        coordinates: geo ? { lat: geo.ll[0], lon: geo.ll[1] } : null
+        country: countryInfo.geo?.country || userCountry,
+        countryCode: userCountry,
+        city: countryInfo.geo?.city || 'Unknown',
+        region: countryInfo.geo?.region || 'Unknown',
+        timezone: countryInfo.geo?.timezone || 'Unknown',
+        coordinates: countryInfo.geo ? { lat: countryInfo.geo.ll[0], lon: countryInfo.geo.ll[1] } : null,
+        detectionSource: countryInfo.source
       },
       statistics: {
         totalVisits: totalVisits,
