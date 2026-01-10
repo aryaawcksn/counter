@@ -77,6 +77,14 @@ const getCountryName = (countryCode) => {
   return countryNames[countryCode] || countryCode;
 };
 
+// Fungsi helper untuk mendapatkan IP client yang lebih akurat
+const getClientIP = (req) => {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+         req.headers['x-real-ip'] ||
+         req.socket.remoteAddress ||
+         req.ip;
+};
+
 /* ===== CONNECT DB ===== */
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected"))
@@ -384,6 +392,27 @@ app.get("/api/counter/:id", async (req, res) => {
   const { id } = req.params;
   const counter = await Counter.findById(id);
   res.json(counter || { _id: id, count: 0, message: "Counter not found" });
+});
+
+// Endpoint debug untuk melihat IP dan geo detection
+app.get("/debug/ip", async (req, res) => {
+  const clientIP = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+                   req.headers['x-real-ip'] ||
+                   req.socket.remoteAddress ||
+                   req.ip;
+  
+  const geo = geoip.lookup(clientIP);
+  
+  res.json({
+    detectedIP: clientIP,
+    headers: {
+      'x-forwarded-for': req.headers['x-forwarded-for'],
+      'x-real-ip': req.headers['x-real-ip']
+    },
+    socketIP: req.socket.remoteAddress,
+    reqIP: req.ip,
+    geoResult: geo
+  });
 });
 
 // Endpoint untuk melihat statistik negara
