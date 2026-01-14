@@ -473,6 +473,32 @@ app.get("/count-stats/:id", async (req, res) => {
   res.send(svg);
 });
 
+// Endpoint untuk READ ONLY - tidak update counter (hanya tampil)
+app.get("/check/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).send("Missing id");
+
+  // Ambil data counter tanpa update
+  const counter = await Counter.findById(id);
+  const count = counter ? counter.count : 0;
+  const countStr = count.toLocaleString();
+  const timestamp = Date.now();
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="30" role="img">
+  <!-- Cache buster: ${timestamp} -->
+  <rect width="1000" height="30" fill="rgba(255, 255, 255, 0)" rx="4"/>
+  <text x="500" y="20" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="14" font-weight="bold" fill="white">Total Visitor: ${countStr}</text>
+</svg>`;
+
+  res.set({
+    "Content-Type": "image/svg+xml",
+    "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0"
+  });
+  res.send(svg);
+});
+
 // Endpoint untuk melihat data counter (untuk debugging)
 app.get("/api/counter/:id", async (req, res) => {
   const { id } = req.params;
