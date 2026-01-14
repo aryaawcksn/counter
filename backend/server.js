@@ -374,7 +374,7 @@ const svg = `
 
       <!-- Cache buster: ${timestamp} -->
 
-      <rect width="1000" height="30" fill="#509ffaff" rx="4"/>
+      <rect width="1000" height="30" fill="rgba(255, 255, 255, 0)" rx="4"/>
 
      
 
