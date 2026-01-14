@@ -357,26 +357,141 @@ app.get("/country-stats/:id", async (req, res) => {
   res.send(svg);
 });
 
-// Endpoint sederhana untuk menampilkan angka counter dalam SVG (teks di tengah)
+// Endpoint untuk menampilkan country stats dengan counter dan cooldown
 app.get("/count-stats/:id", async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).send("Missing id");
 
-  // Ambil data counter
-  const counter = await Counter.findById(id);
-  const count = counter ? counter.count : 0;
-  const countStr = count.toLocaleString();
+  // Dapatkan IP address pengunjung
+  const clientIP = getClientIP(req);
+  
+  // Cek cooldown (default 3 jam)
+  const cooldownHours = 3;
+  const cooldownMs = cooldownHours * 60 * 60 * 1000;
+  
+  const existingCooldown = await CounterCooldown.findOne({
+    counterId: id,
+    ipAddress: clientIP,
+    lastCount: { $gte: new Date(Date.now() - cooldownMs) }
+  });
+
+  let shouldCount = !existingCooldown;
+  let counter, countryStats;
+
+  if (shouldCount) {
+    // Tidak dalam cooldown, lakukan counting
+    const geo = geoip.lookup(clientIP);
+    let countryCode = 'Unknown';
+    let countryName = 'Unknown';
+    
+    if (geo && geo.country) {
+      countryCode = geo.country;
+      countryName = getCountryName(countryCode);
+    }
+
+    // Update counter utama
+    counter = await Counter.findOneAndUpdate(
+      { _id: id },
+      { $inc: { count: 1 }, $set: { updatedAt: new Date() } },
+      { upsert: true, new: true }
+    );
+
+    // Update statistik negara
+    try {
+      const updateResult = await CountryStats.findOneAndUpdate(
+        { _id: id, "countries.code": countryCode },
+        { 
+          $inc: { "countries.$.count": 1 },
+          $set: { updatedAt: new Date() }
+        },
+        { new: true }
+      );
+
+      if (!updateResult) {
+        await CountryStats.findOneAndUpdate(
+          { _id: id },
+          { 
+            $push: { 
+              countries: { 
+                code: countryCode, 
+                name: countryName, 
+                count: 1 
+              } 
+            },
+            $set: { updatedAt: new Date() }
+          },
+          { upsert: true, new: true }
+        );
+      }
+    } catch (error) {
+      console.error('Error updating country stats:', error);
+    }
+
+    // Simpan cooldown
+    await CounterCooldown.findOneAndUpdate(
+      { counterId: id, ipAddress: clientIP },
+      { 
+        lastCount: new Date(),
+        expiresAt: new Date(Date.now() + cooldownMs)
+      },
+      { upsert: true }
+    );
+  } else {
+    // Dalam cooldown, ambil data tanpa update
+    counter = await Counter.findById(id);
+  }
+
+  // Ambil data statistik negara
+  countryStats = await CountryStats.findById(id);
+  const countries = countryStats ? countryStats.countries : [];
+  
+  // Urutkan negara berdasarkan count dan ambil 5 teratas
+  const top5Countries = countries
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
   const timestamp = Date.now();
+  const countStr = counter ? counter.count.toLocaleString() : '0';
+  
+  // Hitung tinggi SVG berdasarkan jumlah negara
+  const baseHeight = 20;
+  const countryHeight = 16;
+  const totalHeight = baseHeight + (top5Countries.length * countryHeight) + 10;
+  
+  // Generate teks untuk negara
+  let countryTexts = '';
+  
+  top5Countries.forEach((country, index) => {
+    const y = baseHeight + (index * countryHeight) + 12;
+    const percentage = counter && counter.count > 0 ? ((country.count / counter.count) * 100).toFixed(1) : 0;
+    const flag = getCountryFlag(country.code);
+    
+    countryTexts += `
+      <text x="10" y="${y}" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11" fill="#333">
+        ${flag} ${country.name}: ${country.count} (${percentage}%)
+      </text>`;
+  });
 
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="200" height="30" role="img">
-      <!-- Cache buster: ${timestamp} -->
-      <rect width="200" height="30" fill="#0366d6" rx="4"/>
+    <svg xmlns="http://www.w3.org/2000/svg" width="300" height="${totalHeight}" role="img">
+      <!-- Cache buster: ${timestamp}-${Math.random().toString(36).substring(2, 9)} -->
+      <rect width="300" height="${totalHeight}" fill="#f6f8fa" stroke="#d1d5da" stroke-width="1" rx="6"/>
       
-      <text x="100" y="20" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
-            font-size="14" font-weight="bold" fill="white">
-        Total Visitor: ${countStr}
+      <!-- Header -->
+      <rect width="300" height="20" fill="#0366d6" rx="6"/>
+      <rect width="300" height="14" fill="#0366d6"/>
+      
+      <text x="150" y="14" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
+            font-size="12" font-weight="bold" fill="white">
+        Total Visitor: ${countStr} ${shouldCount ? '(+1 NEW!)' : ''}
       </text>
+      
+      <!-- Country Stats -->
+      ${countryTexts}
+      
+      ${top5Countries.length === 0 ? 
+        `<text x="150" y="${baseHeight + 12}" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
+               font-size="11" fill="#666">No country data available</text>` : ''}
     </svg>
   `;
 
@@ -384,7 +499,8 @@ app.get("/count-stats/:id", async (req, res) => {
     "Content-Type": "image/svg+xml",
     "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
     "Pragma": "no-cache",
-    "Expires": "0"
+    "Expires": "0",
+    "ETag": `"${timestamp}-${counter ? counter.count : 0}"`
   });
   res.send(svg);
 });
