@@ -369,27 +369,15 @@ app.get("/count-stats/:id", async (req, res) => {
   const timestamp = Date.now();
 
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="160" height="28" role="img" aria-label="Total Visitors: ${countStr}">
-  <linearGradient id="s" x2="0" y2="100%">
-    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
-    <stop offset="1" stop-opacity=".1"/>
-  </linearGradient>
-  
-  <clipPath id="r">
-    <rect width="160" height="28" rx="4" fill="#fff"/>
-  </clipPath>
-  
-  <g clip-path="url(#r)">
-    <rect width="100" height="28" fill="#555"/> <rect x="100" width="60" height="28" fill="#4094f5"/> <rect width="160" height="28" fill="url(#s)"/>
-  </g>
-  
-  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="12">
-    <text x="50" y="19" fill="#010101" fill-opacity=".3">Total Visitors</text>
-    <text x="50" y="18">Total Visitors</text>
-    <text x="130" y="19" fill="#010101" fill-opacity=".3">${countStr}</text>
-    <text x="130" y="18" font-weight="bold">${countStr}</text>
-  </g>
-</svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="30" role="img">
+      <!-- Cache buster: ${timestamp} -->
+      <rect width="1000" height="30" fill="#4094f5ff" rx="4"/>
+      
+      <text x="200" y="20" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
+            font-size="14" font-weight="bold" fill="white">
+        Total Visitor: ${countStr}
+      </text>
+    </svg>
   `;
 
   res.set({
