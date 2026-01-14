@@ -454,7 +454,7 @@ app.get("/api/country-stats/:id", async (req, res) => {
   });
 });
 
-// Route untuk counter dengan cooldown dan redirect ke gambar
+// Route untuk counter TANPA cooldown (selalu count)
 app.get("/count/:id", async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).send("Missing id");
@@ -462,51 +462,7 @@ app.get("/count/:id", async (req, res) => {
   // Dapatkan IP address pengunjung
   const clientIP = getClientIP(req);
   
-  // Cek cooldown (default 3 jam = 3 * 60 * 60 * 1000 ms)
-  const cooldownHours = 3;
-  const cooldownMs = cooldownHours * 60 * 60 * 1000;
-  
-  const existingCooldown = await CounterCooldown.findOne({
-    counterId: id,
-    ipAddress: clientIP,
-    lastCount: { $gte: new Date(Date.now() - cooldownMs) }
-  });
-
-  if (existingCooldown) {
-    // Masih dalam cooldown, tampilkan pesan tanpa menambah counter
-    const timeLeft = Math.ceil((existingCooldown.lastCount.getTime() + cooldownMs - Date.now()) / (1000 * 60 * 60));
-    
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" role="img">
-        <rect width="400" height="100" fill="#fff3cd" stroke="#ffeaa7" stroke-width="2" rx="8"/>
-        
-        <text x="200" y="30" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
-              font-size="16" font-weight="bold" fill="#856404">
-          Already Counted!
-        </text>
-        
-        <text x="200" y="55" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
-              font-size="12" fill="#856404">
-          Please wait ${timeLeft} hour(s) before counting again
-        </text>
-        
-        <text x="200" y="75" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
-              font-size="10" fill="#6c757d">
-          Thank you for your patience! 🕐
-        </text>
-      </svg>
-    `;
-
-    res.set({
-      "Content-Type": "image/svg+xml",
-      "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
-      "Pragma": "no-cache",
-      "Expires": "0"
-    });
-    return res.send(svg);
-  }
-
-  // Tidak dalam cooldown, lakukan counting
+  // Lookup lokasi berdasarkan IP
   const geo = geoip.lookup(clientIP);
   let countryCode = 'Unknown';
   let countryName = 'Unknown';
@@ -516,7 +472,7 @@ app.get("/count/:id", async (req, res) => {
     countryName = getCountryName(countryCode);
   }
 
-  // Update counter utama
+  // Update counter utama (SELALU INCREMENT, TIDAK ADA COOLDOWN)
   const result = await Counter.findOneAndUpdate(
     { _id: id },
     { $inc: { count: 1 }, $set: { updatedAt: new Date() } },
@@ -554,27 +510,17 @@ app.get("/count/:id", async (req, res) => {
     console.error('Error updating country stats:', error);
   }
 
-  // Simpan cooldown
-  await CounterCooldown.findOneAndUpdate(
-    { counterId: id, ipAddress: clientIP },
-    { 
-      lastCount: new Date(),
-      expiresAt: new Date(Date.now() + cooldownMs)
-    },
-    { upsert: true }
-  );
-
   // Tampilkan pesan sukses dengan counter terbaru
   const countStr = result.count.toLocaleString();
   const flag = getCountryFlag(countryCode);
   
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="400" height="120" role="img">
-      <rect width="400" height="120" fill="#d4edda" stroke="#c3e6cb" stroke-width="2" rx="8"/>
+    <svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" role="img">
+      <rect width="400" height="100" fill="#d4edda" stroke="#c3e6cb" stroke-width="2" rx="8"/>
       
       <text x="200" y="25" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
             font-size="18" font-weight="bold" fill="#155724">
-        You've been count thanks! 🎉
+        You've been counted, thanks! 🎉
       </text>
       
       <text x="200" y="50" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
@@ -589,11 +535,6 @@ app.get("/count/:id", async (req, res) => {
       
       <text x="200" y="90" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
             font-size="10" fill="#6c757d">
-        Next count available in ${cooldownHours} hours
-      </text>
-      
-      <text x="200" y="105" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
-            font-size="9" fill="#6c757d">
         Thank you for visiting! ❤️
       </text>
     </svg>
