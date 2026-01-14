@@ -286,15 +286,64 @@ app.get("/forum-counter/:id", async (req, res) => {
   res.redirect(302, redirectUrl);
 });
 
-// Endpoint untuk menampilkan badge dengan statistik negara (HANYA TAMPIL, TIDAK UPDATE COUNTER)
+// Endpoint untuk menampilkan badge dengan statistik negara (UPDATE COUNTER + TAMPIL)
 app.get("/country-stats/:id", async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).send("Missing id");
 
-  // Ambil data counter dan statistik negara tanpa update
-  const counter = await Counter.findById(id);
-  const countryStats = await CountryStats.findById(id);
+  // Dapatkan IP address pengunjung
+  const clientIP = getClientIP(req);
   
+  // Lookup lokasi berdasarkan IP
+  const geo = geoip.lookup(clientIP);
+  let countryCode = 'Unknown';
+  let countryName = 'Unknown';
+  
+  if (geo && geo.country) {
+    countryCode = geo.country;
+    countryName = getCountryName(countryCode);
+  }
+
+  // Update counter utama
+  const counter = await Counter.findOneAndUpdate(
+    { _id: id },
+    { $inc: { count: 1 }, $set: { updatedAt: new Date() } },
+    { upsert: true, new: true }
+  );
+
+  // Update statistik negara
+  try {
+    const updateResult = await CountryStats.findOneAndUpdate(
+      { _id: id, "countries.code": countryCode },
+      { 
+        $inc: { "countries.$.count": 1 },
+        $set: { updatedAt: new Date() }
+      },
+      { new: true }
+    );
+
+    if (!updateResult) {
+      await CountryStats.findOneAndUpdate(
+        { _id: id },
+        { 
+          $push: { 
+            countries: { 
+              code: countryCode, 
+              name: countryName, 
+              count: 1 
+            } 
+          },
+          $set: { updatedAt: new Date() }
+        },
+        { upsert: true, new: true }
+      );
+    }
+  } catch (error) {
+    console.error('Error updating country stats:', error);
+  }
+
+  // Ambil data statistik negara terbaru
+  const countryStats = await CountryStats.findById(id);
   const countries = countryStats ? countryStats.countries : [];
   
   // Urutkan negara berdasarkan count dan ambil 5 teratas
@@ -303,7 +352,7 @@ app.get("/country-stats/:id", async (req, res) => {
     .slice(0, 5);
 
   const timestamp = Date.now();
-  const countStr = counter ? counter.count.toLocaleString() : '0';
+  const countStr = counter.count.toLocaleString();
   
   // Hitung tinggi SVG berdasarkan jumlah negara
   const baseHeight = 20;
@@ -315,7 +364,7 @@ app.get("/country-stats/:id", async (req, res) => {
   
   top5Countries.forEach((country, index) => {
     const y = baseHeight + (index * countryHeight) + 12;
-    const percentage = counter && counter.count > 0 ? ((country.count / counter.count) * 100).toFixed(1) : 0;
+    const percentage = counter.count > 0 ? ((country.count / counter.count) * 100).toFixed(1) : 0;
     const flag = getCountryFlag(country.code);
     
     countryTexts += `
@@ -326,7 +375,7 @@ app.get("/country-stats/:id", async (req, res) => {
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="300" height="${totalHeight}" role="img">
-      <!-- Cache buster: ${timestamp}-${Math.random().toString(36).substr(2, 9)} -->
+      <!-- Cache buster: ${timestamp}-${Math.random().toString(36).substring(2, 9)} -->
       <rect width="300" height="${totalHeight}" fill="#f6f8fa" stroke="#d1d5da" stroke-width="1" rx="6"/>
       
       <!-- Header -->
@@ -337,13 +386,6 @@ app.get("/country-stats/:id", async (req, res) => {
             font-size="12" font-weight="bold" fill="white">
         Total Visitor: ${countStr}
       </text>
-      
-      <!-- Country Stats -->
-      ${countryTexts}
-      
-      ${top5Countries.length === 0 ? 
-        `<text x="150" y="${baseHeight + 12}" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
-               font-size="11" fill="#666">No country data available</text>` : ''}
     </svg>
   `;
 
@@ -352,7 +394,7 @@ app.get("/country-stats/:id", async (req, res) => {
     "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
     "Pragma": "no-cache",
     "Expires": "0",
-    "ETag": `"${timestamp}-${counter ? counter.count : 0}"`
+    "ETag": `"${timestamp}-${counter.count}"`
   });
   res.send(svg);
 });
