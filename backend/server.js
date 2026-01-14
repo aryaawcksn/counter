@@ -399,38 +399,70 @@ app.get("/country-stats/:id", async (req, res) => {
   res.send(svg);
 });
 
-// Endpoint sederhana untuk menampilkan angka counter dalam SVG (teks di tengah)
+// Endpoint sederhana untuk menampilkan angka counter dalam SVG (UPDATE + TAMPIL)
 app.get("/count-stats/:id", async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).send("Missing id");
 
-  // Ambil data counter
-  const counter = await Counter.findById(id);
-  const count = counter ? counter.count : 0;
-  const countStr = count.toLocaleString();
+  // Dapatkan IP address pengunjung
+  const clientIP = getClientIP(req);
+  
+  // Lookup lokasi berdasarkan IP
+  const geo = geoip.lookup(clientIP);
+  let countryCode = 'Unknown';
+  let countryName = 'Unknown';
+  
+  if (geo && geo.country) {
+    countryCode = geo.country;
+    countryName = getCountryName(countryCode);
+  }
+
+  // Update counter utama
+  const counter = await Counter.findOneAndUpdate(
+    { _id: id },
+    { $inc: { count: 1 }, $set: { updatedAt: new Date() } },
+    { upsert: true, new: true }
+  );
+
+  // Update statistik negara
+  try {
+    const updateResult = await CountryStats.findOneAndUpdate(
+      { _id: id, "countries.code": countryCode },
+      { 
+        $inc: { "countries.$.count": 1 },
+        $set: { updatedAt: new Date() }
+      },
+      { new: true }
+    );
+
+    if (!updateResult) {
+      await CountryStats.findOneAndUpdate(
+        { _id: id },
+        { 
+          $push: { 
+            countries: { 
+              code: countryCode, 
+              name: countryName, 
+              count: 1 
+            } 
+          },
+          $set: { updatedAt: new Date() }
+        },
+        { upsert: true, new: true }
+      );
+    }
+  } catch (error) {
+    console.error('Error updating country stats:', error);
+  }
+
+  const countStr = counter.count.toLocaleString();
   const timestamp = Date.now();
 
-const svg = `
-
-    <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="30" role="img">
-
-      <!-- Cache buster: ${timestamp} -->
-
-      <rect width="1000" height="30" fill="rgba(255, 255, 255, 0)" rx="4"/>
-
-     
-
-      <text x="500" y="20" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif"
-
-            font-size="14" font-weight="bold" fill="white">
-
-        Total Visitor: ${countStr}
-
-      </text>
-
-    </svg>
-
-  `;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="30" role="img">
+  <!-- Cache buster: ${timestamp}-${Math.random().toString(36).substring(2, 9)} -->
+  <rect width="1000" height="30" fill="rgba(255, 255, 255, 0)" rx="4"/>
+  <text x="500" y="20" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="14" font-weight="bold" fill="white">Total Visitor: ${countStr}</text>
+</svg>`;
 
   res.set({
     "Content-Type": "image/svg+xml",
