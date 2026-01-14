@@ -369,9 +369,9 @@ app.get("/count-stats/:id", async (req, res) => {
   const timestamp = Date.now();
 
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="400" height="30" role="img">
+    <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="30" role="img">
       <!-- Cache buster: ${timestamp} -->
-      <rect width="400" height="30" fill="#0366d6" rx="4"/>
+      <rect width="400" height="30" fill="#4094f5ff" rx="4"/>
       
       <text x="200" y="20" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
             font-size="14" font-weight="bold" fill="white">
