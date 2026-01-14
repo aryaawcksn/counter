@@ -370,12 +370,26 @@ app.get("/count-stats/:id", async (req, res) => {
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="30" role="img">
-      <!-- Cache buster: ${timestamp} -->
-      <rect width="1000" height="30" fill="#4094f5ff" rx="4"/>
+      <defs>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#5ba4f7;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#2a7ddb;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+
+      <rect width="1000" height="30" fill="url(#grad)" rx="6"/>
+      <rect x="0.5" y="0.5" width="999" height="29" fill="none" stroke="white" stroke-opacity="0.1" rx="6"/>
       
-      <text x="500" y="20" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" 
-            font-size="14" font-weight="bold" fill="white">
-        Total Visitor: ${countStr}
+      <rect width="10" height="30" fill="#ffffff" fill-opacity="0.2" rx="2"/>
+
+      <text x="500" y="20" 
+            text-anchor="middle" 
+            font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" 
+            font-size="14" 
+            font-weight="600" 
+            fill="white"
+            style="text-shadow: 0px 1px 2px rgba(0,0,0,0.3);">
+        TOTAL VISITOR: ${countStr}
       </text>
     </svg>
   `;
